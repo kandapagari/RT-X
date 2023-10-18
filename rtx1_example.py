@@ -18,4 +18,4 @@ model.model.eval()
 
 # compute the eval logits with a conditional scale of 3
 eval_logits = model.run(video, instructions, cond_scale=3.0)
-print(eval_logits.shape)
+print(train_logits.shape, eval_logits.shape)
