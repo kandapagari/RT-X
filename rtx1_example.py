@@ -1,11 +1,14 @@
 import torch
-from rtx.rtx1 import RTX1
+from rtx import RT1X
 
-model = RTX1()
+model = RT1X()
+device = 'cpu'
+model.to(device)
 
-video = torch.randn(2, 3, 6, 224, 224)
+video = torch.randn(2, 3, 6, 224, 224, device=device)
 
-instructions = ["bring me that apple sitting on the table", "please pass the butter"]
+instructions = ["bring me that apple sitting on the table",
+                "please pass the butter"]
 
 # compute the train logits
 train_logits = model.train(video, instructions)

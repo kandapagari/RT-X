@@ -1,14 +1,12 @@
 import torch
 import torch.nn.functional as F
 from torch import nn, einsum
-from PIL import Image
 from typing import List, Optional, Callable, Tuple
 from beartype import beartype
 
 from einops import pack, unpack, repeat, reduce, rearrange
 from einops.layers.torch import Rearrange, Reduce
 
-from functools import partial
 from classifier_free_guidance_pytorch import (
     TextConditioner,
     AttentionTextConditioner,
@@ -16,8 +14,6 @@ from classifier_free_guidance_pytorch import (
 )
 
 from efficientnet_pytorch import EfficientNet
-
-from torchvision import transforms
 
 
 # helpers
@@ -147,8 +143,8 @@ class Dropsample(nn.Module):
             return x
 
         keep_mask = (
-            torch.FloatTensor((x.shape[0], 1, 1, 1), device=device).uniform_()
-            > self.prob
+            torch.FloatTensor((x.shape[0], 1, 1, 1),
+                              device=device).uniform_() > self.prob
         )
         return x * keep_mask / (1 - self.prob)
 
@@ -204,7 +200,8 @@ class Attention(nn.Module):
 
         # relative positional bias
 
-        self.rel_pos_bias = nn.Embedding((2 * window_size - 1) ** 2, self.heads)
+        self.rel_pos_bias = nn.Embedding(
+            (2 * window_size - 1) ** 2, self.heads)
 
         pos = torch.arange(window_size)
         grid = torch.stack(torch.meshgrid(pos, pos, indexing="ij"))
@@ -213,9 +210,11 @@ class Attention(nn.Module):
             grid, "j ... -> 1 j ..."
         )
         rel_pos += window_size - 1
-        rel_pos_indices = (rel_pos * torch.tensor([2 * window_size - 1, 1])).sum(dim=-1)
+        rel_pos_indices = (
+            rel_pos * torch.tensor([2 * window_size - 1, 1])).sum(dim=-1)
 
-        self.register_buffer("rel_pos_indices", rel_pos_indices, persistent=False)
+        self.register_buffer(
+            "rel_pos_indices", rel_pos_indices, persistent=False)
 
     def forward(self, x):
         batch, height, width, window_height, window_width, _, device, h = (
@@ -236,7 +235,8 @@ class Attention(nn.Module):
 
         # split heads
 
-        q, k, v = map(lambda t: rearrange(t, "b n (h d ) -> b h n d", h=h), (q, k, v))
+        q, k, v = map(lambda t: rearrange(
+            t, "b n (h d ) -> b h n d", h=h), (q, k, v))
 
         # scale
 
@@ -289,7 +289,8 @@ class MaxViT(nn.Module):
         super().__init__()
         assert isinstance(
             depth, tuple
-        ), "depth needs to be tuple if integers indicating number of transformer blocks at that stage"
+        ), "depth needs to be tuple if integers indicating number of transformer blocks\
+            at that stage"
 
         # convolutional stem
 
@@ -318,9 +319,7 @@ class MaxViT(nn.Module):
 
         cond_hidden_dims = []
 
-        for ind, ((layer_dim_in, layer_dim), layer_depth) in enumerate(
-            zip(dim_pairs, depth)
-        ):
+        for (layer_dim_in, layer_dim), layer_depth in zip(dim_pairs, depth):
             for stage_ind in range(layer_depth):
                 is_first = stage_ind == 0
                 stage_dim_in = layer_dim_in if is_first else layer_dim
@@ -399,10 +398,7 @@ class MaxViT(nn.Module):
 
             x = stage(x)
 
-        if return_embeddings:
-            return x
-
-        return self.mlp_head(x)
+        return x if return_embeddings else self.mlp_head(x)
 
 
 # attention
@@ -428,7 +424,8 @@ class TransformerAttention(nn.Module):
         dim_context = default(dim_context, dim)
 
         self.norm = LayerNorm(dim)
-        self.context_norm = LayerNorm(dim_context) if norm_context else nn.Identity()
+        self.context_norm = LayerNorm(
+            dim_context) if norm_context else nn.Identity()
 
         self.attn_dropout = nn.Dropout(dropout)
 
@@ -530,7 +527,8 @@ class Transformer(nn.Module):
 class TokenLearner(nn.Module):
     """
     https://arxiv.org/abs/2106.11297
-    using the 1.1 version with the MLP (2 dense layers with gelu) for generating attention map
+    using the 1.1 version with the MLP (2 dense layers with gelu) for generating
+    attention map
     """
 
     def __init__(self, *, dim, ff_mult=2, num_output_tokens=8, num_layers=2):
@@ -539,9 +537,11 @@ class TokenLearner(nn.Module):
 
         self.num_output_tokens = num_output_tokens
         self.net = nn.Sequential(
-            nn.Conv2d(dim * num_output_tokens, inner_dim, 1, groups=num_output_tokens),
+            nn.Conv2d(dim * num_output_tokens, inner_dim,
+                      1, groups=num_output_tokens),
             nn.GELU(),
-            nn.Conv2d(inner_dim, num_output_tokens, 1, groups=num_output_tokens),
+            nn.Conv2d(inner_dim, num_output_tokens,
+                      1, groups=num_output_tokens),
         )
 
     def forward(self, x):
@@ -588,7 +588,8 @@ class RT1(nn.Module):
         )
 
         self.conditioner = conditioner_klass(
-            hidden_dims=(*tuple(vit.cond_hidden_dims), *((vit.embed_dim,) * depth * 2)),
+            hidden_dims=(*tuple(vit.cond_hidden_dims), *
+                         ((vit.embed_dim,) * depth * 2)),
             hiddens_channel_first=(
                 *((True,) * self.num_vit_stages),
                 *((False,) * depth * 2),
@@ -638,7 +639,7 @@ class RT1(nn.Module):
 
         vit_cond_fns, transformer_cond_fns = (
             cond_fns[: -(depth * 2)],
-            cond_fns[-(depth * 2) :],
+            cond_fns[-(depth * 2):],
         )
 
         video = rearrange(video, "b c f h w -> b f c h w")
@@ -688,15 +689,16 @@ class RT1(nn.Module):
             learned_tokens, cond_fns=transformer_cond_fns, attn_mask=~attn_mask
         )
 
-        pooled = reduce(attended_tokens, "b (f n) d -> b f d", "mean", f=frames)
+        pooled = reduce(attended_tokens, "b (f n) d -> b f d",
+                        "mean", f=frames)
 
-        logits = self.to_logits(pooled)
-        return logits
+        return self.to_logits(pooled)
 
 
-class RTX1(nn.Module):
+class RT1X(nn.Module):
     """
-    A class for real-time video processing using Vision Transformers (ViT) and Reinforcement Learning (RT1) models.
+    A class for real-time video processing using Vision Transformers (ViT) and
+    Reinforcement Learning (RT1) models.
 
     ...
 
@@ -710,9 +712,11 @@ class RTX1(nn.Module):
     Methods
     -------
     train(video, instructions):
-        Computes the logits for the given video and instructions using the RT1 model in training mode.
+        Computes the logits for the given video and instructions using the RT1 model in
+        training mode.
     eval(video, instructions, cond_scale=1.0):
-        Computes the logits for the given video and instructions using the RT1 model in evaluation mode.
+        Computes the logits for the given video and instructions using the RT1 model in
+        evaluation mode.
     """
 
     def __init__(
@@ -731,6 +735,7 @@ class RTX1(nn.Module):
         heads=8,
         dim_head_rt1=64,
         cond_drop_prob=0.2,
+        efficient_model="efficientnet-b3"
     ):
         """
         Constructs all the necessary attributes for the RTX1 object.
@@ -790,11 +795,12 @@ class RTX1(nn.Module):
         )
 
         # init efficient net
-        self.efficent_net = EfficientNet.from_pretrained("efficientnet-b0")
+        self.efficent_net = EfficientNet.from_pretrained(efficient_model)
 
     def train(self, video, instructions):
         """
-        Computes the logits for the given video and instructions using the RT1 model in training mode.
+        Computes the logits for the given video and instructions using the RT1 model in
+        training mode.
 
         Parameters
         ----------
@@ -810,14 +816,14 @@ class RTX1(nn.Module):
         """
 
         try:
-            train_logits = self.model(video, instructions)
-            return train_logits
+            return self.model(video, instructions)
         except Exception as e:
-            raise RuntimeError("Error in training: {}".format(e))
+            raise RuntimeError(f"Error in training: {e}") from e
 
     def run(self, video, instructions, cond_scale=1.0):
         """
-        Computes the logits for the given video and instructions using the RT1 model in evaluation mode.
+        Computes the logits for the given video and instructions using the RT1 model in
+        evaluation mode.
 
         Parameters
         ----------
@@ -833,25 +839,23 @@ class RTX1(nn.Module):
         torch.Tensor
             a tensor containing the computed logits
         """
-        # # Reshape video tensor back to include frames dimension
-        # batch_size, channels, frames, height, width = video.shape
-        # video = video.view(batch_size * frames, channels, height, width)
+        # Reshape video tensor back to include frames dimension
+        batch_size, channels, frames, height, width = video.shape
+        video = video.view(batch_size * frames, channels, height, width)
 
-        # # Extract features using EfficientNet
-        # video = self.efficent_net.extract_features(video)
+        # Extract features using EfficientNet
+        video = self.efficent_net.extract_features(video)
 
-        # # Reshape video tensor back to include frames dimension
-        # _, c, h, w = video.shape
-        # video = video.view(batch_size, frames, c, h, w)
+        # Reshape video tensor back to include frames dimension
+        _, c, h, w = video.shape
+        video = video.view(batch_size, frames, c, h, w)
 
-        # # Average features across frames dimension and add an extra dimension
-        # video = video.mean(dim=-1, keepdim=True)
-        # video = video[:, :3, :, :]
+        # Average features across frames dimension and add an extra dimension
+        video = video.mean(dim=-1, keepdim=True)
+        video = video[:, :3, :, :]
 
         try:
             self.model.eval()
-            # shape => 2, 3, 6, 224, 224
-            eval_logits = self.model(video, instructions, cond_scale=cond_scale)
-            return eval_logits
+            return self.model(video, instructions, cond_scale=cond_scale)
         except Exception as e:
-            raise RuntimeError("Error in evaluation: {}".format(e))
+            raise RuntimeError(f"Error in evaluation: {e}") from e

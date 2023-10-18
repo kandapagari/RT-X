@@ -10,7 +10,7 @@ from zeta.nn.architecture import (
 )
 
 
-class RTX2(torch.nn.Module):
+class RT2X(torch.nn.Module):
     """
     RTX2 is a transformer architecture that uses a ViT encoder and a transformer decoder.
 
@@ -70,7 +70,7 @@ class RTX2(torch.nn.Module):
         attn_flash=True,
         qk_norm=True,
     ):
-        super(RTX2, self).__init__()
+        super(RT2X, self).__init__()
 
         # vit architecture
         self.encoder = ViTransformerWrapper(
